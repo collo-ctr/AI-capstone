@@ -32,4 +32,3 @@ scipy>=1.11.0
 
 
 
-    print("\n✓ Agent test passed!")
