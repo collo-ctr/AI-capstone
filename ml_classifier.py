@@ -1,5 +1,10 @@
 # modules/ml_classifier.py
 
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split, cross_val_score
@@ -58,13 +63,6 @@ class MLDiagnosticClassifier:
     def _generate_synthetic_data(self, num_samples: int = 2000) -> Tuple[np.ndarray, np.ndarray]:
         """
         Generate synthetic patient data based on known symptom-disease relationships.
-        
-        Args:
-            num_samples: Number of patient records to generate
-            
-        Returns:
-            X: Feature matrix (num_samples x 18)
-            y: Labels (num_samples)
         """
         np.random.seed(42)
         
@@ -157,7 +155,6 @@ class MLDiagnosticClassifier:
                 symptoms = []
                 for symptom in self.symptom_features:
                     prob = profile.get(symptom, 0.05)
-                    # Add some randomness
                     if np.random.random() < prob:
                         symptoms.append(1)
                     else:
@@ -169,7 +166,6 @@ class MLDiagnosticClassifier:
         # Add some random noise samples
         noise_samples = num_samples - len(X_list)
         for _ in range(noise_samples):
-            # Random patient with random symptoms
             symptoms = [1 if np.random.random() < 0.3 else 0 for _ in range(len(self.symptom_features))]
             disease = np.random.choice(self.diseases)
             X_list.append(symptoms)
@@ -184,16 +180,8 @@ class MLDiagnosticClassifier:
     def _symptoms_to_vector(self, symptoms: List[str]) -> np.ndarray:
         """
         Convert a list of symptom strings to a binary feature vector.
-        
-        Args:
-            symptoms: List of symptom names
-            
-        Returns:
-            Binary vector (18,)
         """
         vector = np.zeros(len(self.symptom_features))
-        
-        # Clean and normalize symptoms
         clean_symptoms = [s.lower().strip().replace(" ", "_") for s in symptoms]
         
         for i, feature in enumerate(self.symptom_features):
@@ -205,12 +193,6 @@ class MLDiagnosticClassifier:
     def train(self, verbose: bool = True) -> Dict[str, float]:
         """
         Train all three models and select the best one using cross-validation.
-        
-        Args:
-            verbose: Whether to print training progress
-            
-        Returns:
-            Dictionary of model scores
         """
         if verbose:
             print("=" * 60)
@@ -311,12 +293,6 @@ class MLDiagnosticClassifier:
     def predict(self, symptoms: List[str]) -> Dict:
         """
         Predict diagnosis for a patient.
-        
-        Args:
-            symptoms: List of symptom strings
-            
-        Returns:
-            Dictionary with diagnosis, confidence, and model info
         """
         if not self.is_trained:
             raise ValueError("Model not trained yet. Call train() first.")
@@ -355,14 +331,7 @@ class MLDiagnosticClassifier:
     def predict_from_patient(self, patient: PatientPercept) -> Dict:
         """
         Predict diagnosis from a PatientPercept object.
-        
-        Args:
-            patient: PatientPercept object
-            
-        Returns:
-            Same as predict()
         """
-        # Extract symptoms and add vitals as symptoms
         symptoms = patient.symptoms.copy()
         
         if patient.temperature >= 38.0:
@@ -377,9 +346,6 @@ class MLDiagnosticClassifier:
     def plot_evaluation(self, save_path: Optional[str] = None):
         """
         Generate evaluation plots: confusion matrix and feature importance.
-        
-        Args:
-            save_path: Optional path to save plots
         """
         if not self.is_trained:
             print("Model not trained yet. Call train() first.")
@@ -435,7 +401,6 @@ class MLDiagnosticClassifier:
         print("=" * 60)
         print(classification_report(y_test_labels, y_pred_labels, target_names=self.diseases))
         
-        # Print accuracy
         accuracy = accuracy_score(y_test_labels, y_pred_labels)
         print(f"\nOverall Accuracy: {accuracy:.3f}")
         print("=" * 60)
@@ -443,12 +408,8 @@ class MLDiagnosticClassifier:
     def analyze(self, patient: PatientPercept) -> Dict:
         """
         Standard interface method called by the Agent.
-        
-        Returns:
-            Dictionary with diagnosis, confidence, and model info
         """
         if not self.is_trained:
-            # Auto-train if not trained
             logger.warning("Model not trained. Training now...")
             self.train(verbose=False)
         
