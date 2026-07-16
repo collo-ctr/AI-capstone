@@ -16,6 +16,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 
+pip install numpy scikit-learn matplotlib seaborn pandas
+
 #Creating the requirements folder
 numpy>=1.24.0
 pandas>=2.0.0
