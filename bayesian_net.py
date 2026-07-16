@@ -1,5 +1,10 @@
 # modules/bayesian_net.py
 
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import math
 from typing import List, Dict, Tuple, Optional
 import logging
@@ -63,7 +68,7 @@ class SimpleBayesianDiagnostics:
                 'sneezing': 0.20,
                 'sore_throat': 0.40,
                 'rash': 0.10,
-                'loss_of_smell': 0.70,      # Key symptom for COVID
+                'loss_of_smell': 0.70,
                 'shortness_of_breath': 0.45,
                 'chest_pain': 0.30,
                 'nausea': 0.25,
@@ -79,8 +84,8 @@ class SimpleBayesianDiagnostics:
                 'fatigue': 0.40,
                 'headache': 0.35,
                 'body_ache': 0.25,
-                'runny_nose': 0.85,          # Key symptom for cold
-                'sneezing': 0.80,            # Key symptom for cold
+                'runny_nose': 0.85,
+                'sneezing': 0.80,
                 'sore_throat': 0.70,
                 'rash': 0.05,
                 'loss_of_smell': 0.10,
@@ -94,22 +99,22 @@ class SimpleBayesianDiagnostics:
                 'swollen_lymph_nodes': 0.10
             },
             'dengue': {
-                'fever': 0.98,               # Very common
+                'fever': 0.98,
                 'cough': 0.30,
                 'fatigue': 0.85,
-                'headache': 0.90,            # Very common
+                'headache': 0.90,
                 'body_ache': 0.85,
                 'runny_nose': 0.15,
                 'sneezing': 0.10,
                 'sore_throat': 0.20,
-                'rash': 0.75,                # Key symptom for dengue
+                'rash': 0.75,
                 'loss_of_smell': 0.05,
                 'shortness_of_breath': 0.15,
                 'chest_pain': 0.10,
                 'nausea': 0.50,
                 'vomiting': 0.40,
                 'diarrhea': 0.20,
-                'joint_pain': 0.85,          # Key symptom for dengue
+                'joint_pain': 0.85,
                 'chills': 0.60,
                 'swollen_lymph_nodes': 0.30
             },
@@ -121,7 +126,7 @@ class SimpleBayesianDiagnostics:
                 'body_ache': 0.35,
                 'runny_nose': 0.20,
                 'sneezing': 0.15,
-                'sore_throat': 0.95,         # Key symptom
+                'sore_throat': 0.95,
                 'rash': 0.10,
                 'loss_of_smell': 0.05,
                 'shortness_of_breath': 0.05,
@@ -131,7 +136,7 @@ class SimpleBayesianDiagnostics:
                 'diarrhea': 0.05,
                 'joint_pain': 0.15,
                 'chills': 0.30,
-                'swollen_lymph_nodes': 0.60  # Key symptom
+                'swollen_lymph_nodes': 0.60
             },
             'allergy': {
                 'fever': 0.05,
@@ -139,8 +144,8 @@ class SimpleBayesianDiagnostics:
                 'fatigue': 0.20,
                 'headache': 0.15,
                 'body_ache': 0.05,
-                'runny_nose': 0.90,          # Key symptom
-                'sneezing': 0.95,            # Key symptom
+                'runny_nose': 0.90,
+                'sneezing': 0.95,
                 'sore_throat': 0.30,
                 'rash': 0.25,
                 'loss_of_smell': 0.05,
@@ -155,7 +160,7 @@ class SimpleBayesianDiagnostics:
             },
             'pneumonia': {
                 'fever': 0.90,
-                'cough': 0.95,               # Very common
+                'cough': 0.95,
                 'fatigue': 0.80,
                 'headache': 0.40,
                 'body_ache': 0.45,
@@ -164,8 +169,8 @@ class SimpleBayesianDiagnostics:
                 'sore_throat': 0.30,
                 'rash': 0.05,
                 'loss_of_smell': 0.10,
-                'shortness_of_breath': 0.85, # Key symptom
-                'chest_pain': 0.60,          # Key symptom
+                'shortness_of_breath': 0.85,
+                'chest_pain': 0.60,
                 'nausea': 0.30,
                 'vomiting': 0.20,
                 'diarrhea': 0.15,
@@ -175,7 +180,7 @@ class SimpleBayesianDiagnostics:
             },
             'bronchitis': {
                 'fever': 0.50,
-                'cough': 0.95,               # Very common
+                'cough': 0.95,
                 'fatigue': 0.60,
                 'headache': 0.30,
                 'body_ache': 0.35,
@@ -222,12 +227,6 @@ class SimpleBayesianDiagnostics:
         
         Uses log space to avoid underflow:
         log(P(D|S)) ∝ log(P(D)) + Σ log(P(s|D))
-        
-        Args:
-            symptoms: List of symptom strings
-            
-        Returns:
-            Dictionary of {disease: probability}
         """
         # Clean symptoms
         clean_symptoms = [self.clean_symptom(s) for s in symptoms]
@@ -247,7 +246,6 @@ class SimpleBayesianDiagnostics:
                 log_scores[disease] += math.log(likelihood)
         
         # Convert from log space to probability space
-        # First, get max log score for numerical stability
         max_log = max(log_scores.values())
         
         # Convert to probabilities (softmax-style)
@@ -266,14 +264,9 @@ class SimpleBayesianDiagnostics:
         return posteriors
     
     def analyze(self, patient: PatientPercept) -> Dict:
-        """
-        Standard interface method called by the Agent.
-        
-        Returns:
-            Dictionary with diagnosis, confidence, and all disease probabilities
-        """
+        """Standard interface method called by the Agent."""
         # Extract symptoms from patient
-        symptoms = patient.symptoms
+        symptoms = patient.symptoms.copy()
         
         # Add vital signs as symptoms
         if patient.temperature >= 38.0:
@@ -305,45 +298,18 @@ class SimpleBayesianDiagnostics:
         }
     
     def get_symptom_probability(self, disease: str, symptom: str) -> float:
-        """
-        Get the likelihood P(symptom | disease).
-        
-        Args:
-            disease: Disease name
-            symptom: Symptom name
-            
-        Returns:
-            Probability (0.0 to 1.0)
-        """
+        """Get the likelihood P(symptom | disease)."""
         disease = disease.lower().strip().replace(" ", "_")
         symptom = self.clean_symptom(symptom)
         return self.likelihoods.get(disease, {}).get(symptom, self.epsilon)
     
     def get_prior(self, disease: str) -> float:
-        """
-        Get the prior probability of a disease.
-        
-        Args:
-            disease: Disease name
-            
-        Returns:
-            Prior probability (0.0 to 1.0)
-        """
+        """Get the prior probability of a disease."""
         disease = disease.lower().strip().replace(" ", "_")
         return self.priors.get(disease, 0.0)
     
     def calculate_odds_ratio(self, disease1: str, disease2: str, symptoms: List[str]) -> float:
-        """
-        Calculate the odds ratio between two diseases given symptoms.
-        
-        Args:
-            disease1: First disease
-            disease2: Second disease
-            symptoms: List of symptoms
-            
-        Returns:
-            Odds ratio P(D1|S) / P(D2|S)
-        """
+        """Calculate the odds ratio between two diseases given symptoms."""
         posteriors = self.compute_posterior(symptoms)
         return posteriors.get(disease1, 0.0) / (posteriors.get(disease2, 0.001))
     
@@ -352,7 +318,7 @@ class SimpleBayesianDiagnostics:
         result = self.analyze(patient)
         
         print("=" * 60)
-        print(f"BAYESIAN DIAGNOSIS REPORT")
+        print("BAYESIAN DIAGNOSIS REPORT")
         print("=" * 60)
         print(f"Patient ID: {patient.patient_id}")
         print(f"Symptoms: {', '.join(patient.symptoms)}")
@@ -394,42 +360,6 @@ if __name__ == "__main__":
     print(f"Top 3: {result1['top_3']}")
     print()
     
-    # Test case 2: Cold symptoms
-    print("--- Test 2: Common Cold Symptoms ---")
-    patient2 = PatientPercept(
-        patient_id="B002",
-        symptoms=["runny nose", "sneezing", "sore throat", "mild fever"],
-        age=30,
-        temperature=37.8,
-        heart_rate=85
-    )
-    
-    result2 = bn.analyze(patient2)
-    print(f"Patient: {patient2.patient_id}")
-    print(f"Symptoms: {patient2.symptoms}")
-    print(f"Top Diagnosis: {result2['diagnosis']}")
-    print(f"Confidence: {result2['confidence']:.2%}")
-    print(f"Top 3: {result2['top_3']}")
-    print()
-    
-    # Test case 3: Dengue symptoms
-    print("--- Test 3: Dengue Symptoms ---")
-    patient3 = PatientPercept(
-        patient_id="B003",
-        symptoms=["fever", "rash", "joint pain", "headache", "fatigue"],
-        age=28,
-        temperature=39.2,
-        heart_rate=105
-    )
-    
-    result3 = bn.analyze(patient3)
-    print(f"Patient: {patient3.patient_id}")
-    print(f"Symptoms: {patient3.symptoms}")
-    print(f"Top Diagnosis: {result3['diagnosis']}")
-    print(f"Confidence: {result3['confidence']:.2%}")
-    print(f"Top 3: {result3['top_3']}")
-    print()
-    
     # Test compute_posterior directly
     print("--- Test: Direct Posterior Computation ---")
     posteriors = bn.compute_posterior(["fever", "cough", "loss_of_smell"])
@@ -444,16 +374,5 @@ if __name__ == "__main__":
     odds = bn.calculate_odds_ratio("covid19", "flu", symptoms)
     print(f"Odds ratio COVID-19 vs Flu given {symptoms}: {odds:.2f}")
     print()
-    
-    # Test with a full beautiful report
-    print("--- Test: Full Diagnosis Report ---")
-    patient4 = PatientPercept(
-        patient_id="B004",
-        symptoms=["fever", "cough", "shortness of breath", "chest pain"],
-        age=60,
-        temperature=39.5,
-        heart_rate=115
-    )
-    bn.print_diagnosis_report(patient4)
     
     print("\n✓ SimpleBayesianDiagnostics test passed!")
