@@ -8,6 +8,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class PatientPercept:
     """Patient data structure - the 'intake form' for each patient"""
@@ -246,7 +247,19 @@ class IntelligentAgent:
 if __name__ == "__main__":
     print("Testing IntelligentAgent...")
     
+    # Create a mock module for testing
+    class MockDiagnosticModule:
+        def analyze(self, patient):
+            return {
+                "module": "MockModule",
+                "diagnosis": "flu",
+                "confidence": 0.85
+            }
+    
     agent = IntelligentAgent()
+    
+    # Register a mock module for testing
+    agent.register_module("MockModule", MockDiagnosticModule())
     
     # Create a test patient
     patient = PatientPercept(
@@ -262,8 +275,9 @@ if __name__ == "__main__":
     agent.perceive(patient)
     
     print("\nStep 2: Think (consult modules)")
-    print("Note: No modules registered yet, so results will be empty")
-    agent.think()
+    print("Consulting registered modules...")
+    results = agent.think()
+    print(f"Results from modules: {list(results.keys())}")
     
     print("\nStep 3: Act (generate report)")
     report = agent.act()
