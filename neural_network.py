@@ -1,435 +1,347 @@
-# modules/fuzzy_controller.py
+# modules/neural_network.py
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
-from typing import Dict, Tuple, List
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers, callbacks
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+import matplotlib.pyplot as plt
+from typing import List, Dict, Tuple, Optional
 import logging
 from modules.agent import PatientPercept
+import warnings
+warnings.filterwarnings('ignore')
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class FuzzySeverityAssessor:
+class NeuralDiagnosticModel:
     """
-    The severity assessor of the system.
-    Uses Fuzzy Logic to determine how serious a patient's condition is.
-    
-    Three Steps:
-    1. FUZZIFICATION: Convert crisp inputs to fuzzy membership degrees
-    2. RULE EVALUATION: Apply fuzzy IF-THEN rules
-    3. DEFUZZIFICATION: Convert fuzzy output to a crisp severity score
+    The deep learning specialist of the system.
+    Uses a Multi-Layer Perceptron (MLP) for disease classification.
     """
     
     def __init__(self):
-        # Severity levels and their centroid values (for defuzzification)
-        self.severity_centers = {
-            'low': 15,
-            'mild': 35,
-            'moderate': 55,
-            'high': 75,
-            'critical': 92
+        # All possible symptoms (18 features)
+        self.symptom_features = [
+            'fever', 'cough', 'fatigue', 'headache', 'body_ache',
+            'runny_nose', 'sneezing', 'sore_throat', 'rash',
+            'loss_of_smell', 'shortness_of_breath', 'chest_pain',
+            'nausea', 'vomiting', 'diarrhea', 'joint_pain',
+            'chills', 'swollen_lymph_nodes'
+        ]
+        
+        # Disease classes
+        self.diseases = [
+            'flu', 'covid19', 'common_cold', 'dengue',
+            'strep_throat', 'allergy', 'pneumonia', 'bronchitis'
+        ]
+        
+        self.num_classes = len(self.diseases)
+        self.num_features = len(self.symptom_features)
+        
+        # Model
+        self.model = None
+        self.label_encoder = LabelEncoder()
+        self.is_trained = False
+        self.training_history = None
+        
+        logger.info("NeuralDiagnosticModel initialized")
+    
+    def _generate_synthetic_data(self, num_samples: int = 2000) -> Tuple[np.ndarray, np.ndarray]:
+        """Generate synthetic patient data."""
+        np.random.seed(42)
+        
+        disease_profiles = {
+            'flu': {
+                'fever': 0.90, 'cough': 0.85, 'fatigue': 0.88,
+                'headache': 0.75, 'body_ache': 0.80, 'runny_nose': 0.40,
+                'sneezing': 0.30, 'sore_throat': 0.60, 'rash': 0.05,
+                'loss_of_smell': 0.10, 'shortness_of_breath': 0.15,
+                'chest_pain': 0.10, 'nausea': 0.35, 'vomiting': 0.20,
+                'diarrhea': 0.15, 'joint_pain': 0.55, 'chills': 0.70,
+                'swollen_lymph_nodes': 0.20
+            },
+            'covid19': {
+                'fever': 0.85, 'cough': 0.80, 'fatigue': 0.75,
+                'headache': 0.50, 'body_ache': 0.45, 'runny_nose': 0.35,
+                'sneezing': 0.20, 'sore_throat': 0.40, 'rash': 0.10,
+                'loss_of_smell': 0.70, 'shortness_of_breath': 0.45,
+                'chest_pain': 0.30, 'nausea': 0.25, 'vomiting': 0.15,
+                'diarrhea': 0.20, 'joint_pain': 0.30, 'chills': 0.55,
+                'swollen_lymph_nodes': 0.15
+            },
+            'common_cold': {
+                'fever': 0.30, 'cough': 0.70, 'fatigue': 0.40,
+                'headache': 0.35, 'body_ache': 0.25, 'runny_nose': 0.85,
+                'sneezing': 0.80, 'sore_throat': 0.70, 'rash': 0.05,
+                'loss_of_smell': 0.10, 'shortness_of_breath': 0.05,
+                'chest_pain': 0.05, 'nausea': 0.10, 'vomiting': 0.05,
+                'diarrhea': 0.05, 'joint_pain': 0.10, 'chills': 0.20,
+                'swollen_lymph_nodes': 0.10
+            },
+            'dengue': {
+                'fever': 0.98, 'cough': 0.30, 'fatigue': 0.85,
+                'headache': 0.90, 'body_ache': 0.85, 'runny_nose': 0.15,
+                'sneezing': 0.10, 'sore_throat': 0.20, 'rash': 0.75,
+                'loss_of_smell': 0.05, 'shortness_of_breath': 0.15,
+                'chest_pain': 0.10, 'nausea': 0.50, 'vomiting': 0.40,
+                'diarrhea': 0.20, 'joint_pain': 0.85, 'chills': 0.60,
+                'swollen_lymph_nodes': 0.30
+            },
+            'strep_throat': {
+                'fever': 0.70, 'cough': 0.30, 'fatigue': 0.50,
+                'headache': 0.40, 'body_ache': 0.35, 'runny_nose': 0.20,
+                'sneezing': 0.15, 'sore_throat': 0.95, 'rash': 0.10,
+                'loss_of_smell': 0.05, 'shortness_of_breath': 0.05,
+                'chest_pain': 0.05, 'nausea': 0.20, 'vomiting': 0.15,
+                'diarrhea': 0.05, 'joint_pain': 0.15, 'chills': 0.30,
+                'swollen_lymph_nodes': 0.60
+            },
+            'allergy': {
+                'fever': 0.05, 'cough': 0.30, 'fatigue': 0.20,
+                'headache': 0.15, 'body_ache': 0.05, 'runny_nose': 0.90,
+                'sneezing': 0.95, 'sore_throat': 0.30, 'rash': 0.25,
+                'loss_of_smell': 0.05, 'shortness_of_breath': 0.15,
+                'chest_pain': 0.05, 'nausea': 0.05, 'vomiting': 0.05,
+                'diarrhea': 0.05, 'joint_pain': 0.05, 'chills': 0.05,
+                'swollen_lymph_nodes': 0.10
+            },
+            'pneumonia': {
+                'fever': 0.90, 'cough': 0.95, 'fatigue': 0.80,
+                'headache': 0.40, 'body_ache': 0.45, 'runny_nose': 0.20,
+                'sneezing': 0.15, 'sore_throat': 0.30, 'rash': 0.05,
+                'loss_of_smell': 0.10, 'shortness_of_breath': 0.85,
+                'chest_pain': 0.60, 'nausea': 0.30, 'vomiting': 0.20,
+                'diarrhea': 0.15, 'joint_pain': 0.25, 'chills': 0.70,
+                'swollen_lymph_nodes': 0.15
+            },
+            'bronchitis': {
+                'fever': 0.50, 'cough': 0.95, 'fatigue': 0.60,
+                'headache': 0.30, 'body_ache': 0.35, 'runny_nose': 0.40,
+                'sneezing': 0.25, 'sore_throat': 0.50, 'rash': 0.05,
+                'loss_of_smell': 0.05, 'shortness_of_breath': 0.55,
+                'chest_pain': 0.30, 'nausea': 0.15, 'vomiting': 0.10,
+                'diarrhea': 0.05, 'joint_pain': 0.15, 'chills': 0.35,
+                'swollen_lymph_nodes': 0.15
+            }
         }
         
-        # Severity label mapping
-        self.severity_labels = {
-            (0, 20): 'LOW',
-            (20, 40): 'MILD',
-            (40, 60): 'MODERATE',
-            (60, 80): 'HIGH',
-            (80, 100): 'CRITICAL'
-        }
+        # Generate samples
+        X_list = []
+        y_list = []
         
-        logger.info("FuzzySeverityAssessor initialized")
+        samples_per_disease = num_samples // len(self.diseases)
+        
+        for disease in self.diseases:
+            profile = disease_profiles[disease]
+            for _ in range(samples_per_disease):
+                symptoms = []
+                for symptom in self.symptom_features:
+                    prob = profile.get(symptom, 0.05)
+                    if np.random.random() < prob:
+                        symptoms.append(1.0)
+                    else:
+                        symptoms.append(0.0)
+                
+                X_list.append(symptoms)
+                y_list.append(disease)
+        
+        # Add some random noise
+        noise_samples = num_samples - len(X_list)
+        for _ in range(noise_samples):
+            symptoms = [1.0 if np.random.random() < 0.3 else 0.0 for _ in range(len(self.symptom_features))]
+            disease = np.random.choice(self.diseases)
+            X_list.append(symptoms)
+            y_list.append(disease)
+        
+        X = np.array(X_list, dtype=np.float32)
+        y = np.array(y_list)
+        
+        logger.info(f"Generated {len(X)} synthetic patient records")
+        return X, y
     
-    def _membership_temp(self, temp: float) -> Dict[str, float]:
-        """
-        Calculate membership degrees for temperature.
+    def _build_model(self) -> keras.Model:
+        """Build the neural network architecture."""
+        model = keras.Sequential([
+            layers.Input(shape=(self.num_features,)),
+            layers.Dense(128, activation='relu'),
+            layers.BatchNormalization(),
+            layers.Dropout(0.3),
+            layers.Dense(64, activation='relu'),
+            layers.BatchNormalization(),
+            layers.Dropout(0.2),
+            layers.Dense(32, activation='relu'),
+            layers.BatchNormalization(),
+            layers.Dense(self.num_classes, activation='softmax')
+        ])
         
-        Fuzzy sets:
-        - normal: 35.0 - 37.5°C (peaks at 36.5°C)
-        - mild: 36.5 - 39.0°C (peaks at 38.0°C)
-        - high: 37.5 - 40.0°C (peaks at 39.0°C)
-        - critical: 39.0°C+ (rises above 39.5°C)
-        """
-        membership = {}
-        
-        # NORMAL: 35.0-37.5°C
-        if temp <= 35.0:
-            membership['normal'] = 0.0
-        elif 35.0 < temp <= 36.5:
-            membership['normal'] = (temp - 35.0) / 1.5
-        elif 36.5 < temp <= 37.5:
-            membership['normal'] = 1.0
-        elif 37.5 < temp <= 38.5:
-            membership['normal'] = (38.5 - temp) / 1.0
-        else:
-            membership['normal'] = 0.0
-        
-        # MILD: 36.5-39.0°C
-        if temp <= 36.5:
-            membership['mild'] = 0.0
-        elif 36.5 < temp <= 38.0:
-            membership['mild'] = (temp - 36.5) / 1.5
-        elif 38.0 < temp <= 39.0:
-            membership['mild'] = 1.0
-        elif 39.0 < temp <= 40.0:
-            membership['mild'] = (40.0 - temp) / 1.0
-        else:
-            membership['mild'] = 0.0
-        
-        # HIGH: 37.5-40.0°C
-        if temp <= 37.5:
-            membership['high'] = 0.0
-        elif 37.5 < temp <= 39.0:
-            membership['high'] = (temp - 37.5) / 1.5
-        elif 39.0 < temp <= 40.0:
-            membership['high'] = 1.0
-        elif 40.0 < temp <= 41.0:
-            membership['high'] = (41.0 - temp) / 1.0
-        else:
-            membership['high'] = 0.0
-        
-        # CRITICAL: 39.0°C+
-        if temp <= 39.0:
-            membership['critical'] = 0.0
-        elif 39.0 < temp <= 39.5:
-            membership['critical'] = (temp - 39.0) / 0.5
-        elif 39.5 < temp <= 40.5:
-            membership['critical'] = 1.0
-        elif 40.5 < temp <= 41.5:
-            membership['critical'] = (41.5 - temp) / 1.0
-        else:
-            membership['critical'] = 0.0
-        
-        # Clamp values to [0, 1]
-        for key in membership:
-            membership[key] = max(0.0, min(1.0, membership[key]))
-        
-        return membership
-    
-    def _membership_hr(self, heart_rate: float) -> Dict[str, float]:
-        """
-        Calculate membership degrees for heart rate.
-        
-        Fuzzy sets:
-        - normal: 60-100 BPM (peaks at 80 BPM)
-        - elevated: 80-120 BPM (peaks at 100 BPM)
-        - high: 100-140 BPM (peaks at 120 BPM)
-        - critical: 120+ BPM (rises above 140 BPM)
-        """
-        membership = {}
-        
-        # NORMAL: 60-100 BPM
-        if heart_rate <= 60:
-            membership['normal'] = 0.0
-        elif 60 < heart_rate <= 80:
-            membership['normal'] = (heart_rate - 60) / 20
-        elif 80 < heart_rate <= 100:
-            membership['normal'] = 1.0
-        elif 100 < heart_rate <= 120:
-            membership['normal'] = (120 - heart_rate) / 20
-        else:
-            membership['normal'] = 0.0
-        
-        # ELEVATED: 80-120 BPM
-        if heart_rate <= 80:
-            membership['elevated'] = 0.0
-        elif 80 < heart_rate <= 100:
-            membership['elevated'] = (heart_rate - 80) / 20
-        elif 100 < heart_rate <= 120:
-            membership['elevated'] = 1.0
-        elif 120 < heart_rate <= 140:
-            membership['elevated'] = (140 - heart_rate) / 20
-        else:
-            membership['elevated'] = 0.0
-        
-        # HIGH: 100-140 BPM
-        if heart_rate <= 100:
-            membership['high'] = 0.0
-        elif 100 < heart_rate <= 120:
-            membership['high'] = (heart_rate - 100) / 20
-        elif 120 < heart_rate <= 140:
-            membership['high'] = 1.0
-        elif 140 < heart_rate <= 160:
-            membership['high'] = (160 - heart_rate) / 20
-        else:
-            membership['high'] = 0.0
-        
-        # CRITICAL: 120+ BPM
-        if heart_rate <= 120:
-            membership['critical'] = 0.0
-        elif 120 < heart_rate <= 140:
-            membership['critical'] = (heart_rate - 120) / 20
-        elif 140 < heart_rate <= 160:
-            membership['critical'] = 1.0
-        elif 160 < heart_rate <= 180:
-            membership['critical'] = (180 - heart_rate) / 20
-        else:
-            membership['critical'] = 0.0
-        
-        # Clamp values to [0, 1]
-        for key in membership:
-            membership[key] = max(0.0, min(1.0, membership[key]))
-        
-        return membership
-    
-    def _membership_symptoms(self, symptom_count: int) -> Dict[str, float]:
-        """
-        Calculate membership degrees for number of symptoms.
-        
-        Fuzzy sets:
-        - few: 0-3 symptoms
-        - moderate: 2-6 symptoms
-        - many: 4-8 symptoms
-        - severe: 7+ symptoms
-        """
-        membership = {}
-        
-        # FEW: 0-3 symptoms
-        if symptom_count <= 0:
-            membership['few'] = 1.0
-        elif 0 < symptom_count <= 2:
-            membership['few'] = 1.0 - (symptom_count / 4)
-        elif 2 < symptom_count <= 4:
-            membership['few'] = (4 - symptom_count) / 2
-        else:
-            membership['few'] = 0.0
-        
-        # MODERATE: 2-6 symptoms
-        if symptom_count <= 2:
-            membership['moderate'] = 0.0
-        elif 2 < symptom_count <= 4:
-            membership['moderate'] = (symptom_count - 2) / 2
-        elif 4 < symptom_count <= 6:
-            membership['moderate'] = 1.0
-        elif 6 < symptom_count <= 8:
-            membership['moderate'] = (8 - symptom_count) / 2
-        else:
-            membership['moderate'] = 0.0
-        
-        # MANY: 4-8 symptoms
-        if symptom_count <= 4:
-            membership['many'] = 0.0
-        elif 4 < symptom_count <= 6:
-            membership['many'] = (symptom_count - 4) / 2
-        elif 6 < symptom_count <= 8:
-            membership['many'] = 1.0
-        elif 8 < symptom_count <= 10:
-            membership['many'] = (10 - symptom_count) / 2
-        else:
-            membership['many'] = 0.0
-        
-        # SEVERE: 7+ symptoms
-        if symptom_count <= 7:
-            membership['severe'] = 0.0
-        elif 7 < symptom_count <= 9:
-            membership['severe'] = (symptom_count - 7) / 2
-        elif 9 < symptom_count <= 11:
-            membership['severe'] = 1.0
-        else:
-            membership['severe'] = 1.0
-        
-        # Clamp values to [0, 1]
-        for key in membership:
-            membership[key] = max(0.0, min(1.0, membership[key]))
-        
-        return membership
-    
-    def _evaluate_rules(self, temp_mf: Dict, hr_mf: Dict, symptom_mf: Dict) -> Dict[str, float]:
-        """
-        Evaluate fuzzy rules using min (AND) and max (OR).
-        
-        Rules:
-        1. IF temp IS critical OR (temp IS high AND hr IS high) -> severity = critical
-        2. IF temp IS high OR (temp IS mild AND hr IS elevated) -> severity = high
-        3. IF temp IS mild OR symptom_count IS many -> severity = moderate
-        4. IF temp IS mild AND symptom_count IS moderate -> severity = mild
-        5. IF temp IS normal AND hr IS normal AND symptom_count IS few -> severity = low
-        """
-        rules = {}
-        
-        # Rule 1: CRITICAL
-        rules['critical'] = max(
-            temp_mf.get('critical', 0),
-            min(temp_mf.get('high', 0), hr_mf.get('high', 0)),
-            min(temp_mf.get('critical', 0), hr_mf.get('elevated', 0))
+        model.compile(
+            optimizer=keras.optimizers.Adam(learning_rate=0.001),
+            loss='sparse_categorical_crossentropy',
+            metrics=['accuracy']
         )
         
-        # Rule 2: HIGH
-        rules['high'] = max(
-            temp_mf.get('high', 0),
-            min(temp_mf.get('mild', 0), hr_mf.get('elevated', 0)),
-            min(temp_mf.get('high', 0), symptom_mf.get('many', 0))
-        )
-        
-        # Rule 3: MODERATE
-        rules['moderate'] = max(
-            temp_mf.get('mild', 0),
-            symptom_mf.get('many', 0),
-            min(temp_mf.get('mild', 0), hr_mf.get('elevated', 0)),
-            min(hr_mf.get('elevated', 0), symptom_mf.get('moderate', 0))
-        )
-        
-        # Rule 4: MILD
-        rules['mild'] = max(
-            min(temp_mf.get('mild', 0), symptom_mf.get('moderate', 0)),
-            min(temp_mf.get('normal', 0), hr_mf.get('elevated', 0)),
-            min(temp_mf.get('mild', 0), symptom_mf.get('few', 0))
-        )
-        
-        # Rule 5: LOW
-        rules['low'] = max(
-            min(temp_mf.get('normal', 0), hr_mf.get('normal', 0), symptom_mf.get('few', 0)),
-            min(temp_mf.get('normal', 0), hr_mf.get('normal', 0), symptom_mf.get('moderate', 0))
-        )
-        
-        # Clamp values
-        for key in rules:
-            rules[key] = max(0.0, min(1.0, rules[key]))
-        
-        return rules
+        logger.info("Model architecture built")
+        return model
     
-    def _defuzzify(self, rules: Dict[str, float]) -> float:
-        """
-        Convert fuzzy output to a crisp severity score using centroid method.
-        """
-        numerator = 0.0
-        denominator = 0.0
+    def _symptoms_to_vector(self, symptoms: List[str]) -> np.ndarray:
+        """Convert symptom list to binary feature vector."""
+        vector = np.zeros(len(self.symptom_features), dtype=np.float32)
+        clean_symptoms = [s.lower().strip().replace(" ", "_") for s in symptoms]
         
-        for level, membership in rules.items():
-            center = self.severity_centers.get(level, 50)
-            numerator += center * membership
-            denominator += membership
+        for i, feature in enumerate(self.symptom_features):
+            if feature in clean_symptoms:
+                vector[i] = 1.0
         
-        # Avoid division by zero
-        if denominator < 0.0001:
-            return 0.0
-        
-        score = numerator / denominator
-        
-        # Clamp to [0, 100]
-        return max(0.0, min(100.0, score))
+        return vector
     
-    def _get_severity_label(self, score: float) -> str:
-        """Map severity score to a label."""
-        for (low, high), label in self.severity_labels.items():
-            if low <= score <= high:
-                return label
-        return 'UNKNOWN'
+    def train(self, epochs: int = 50, batch_size: int = 32, verbose: bool = True):
+        """Train the neural network."""
+        if verbose:
+            print("=" * 60)
+            print("TRAINING NEURAL NETWORK DIAGNOSTIC MODEL")
+            print("=" * 60)
+        
+        X, y = self._generate_synthetic_data(2000)
+        y_encoded = self.label_encoder.fit_transform(y)
+        
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
+        )
+        
+        if verbose:
+            print(f"\nData Split:")
+            print(f"  Training samples: {len(X_train)}")
+            print(f"  Test samples: {len(X_test)}")
+            print(f"  Features: {self.num_features}")
+            print(f"  Classes: {self.num_classes}")
+        
+        self.model = self._build_model()
+        
+        callbacks_list = [
+            callbacks.EarlyStopping(
+                monitor='val_accuracy',
+                patience=10,
+                restore_best_weights=True,
+                verbose=1
+            ),
+            callbacks.ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.5,
+                patience=5,
+                min_lr=1e-6,
+                verbose=1
+            )
+        ]
+        
+        if verbose:
+            print("\n" + "-" * 60)
+            print("Training Neural Network...")
+            print("-" * 60)
+        
+        history = self.model.fit(
+            X_train, y_train,
+            epochs=epochs,
+            batch_size=batch_size,
+            validation_data=(X_test, y_test),
+            callbacks=callbacks_list,
+            verbose=1 if verbose else 0
+        )
+        
+        self.training_history = history
+        self.is_trained = True
+        
+        test_loss, test_accuracy = self.model.evaluate(X_test, y_test, verbose=0)
+        
+        if verbose:
+            print("\n" + "-" * 60)
+            print(f"Test Accuracy: {test_accuracy:.3f}")
+            print(f"Test Loss: {test_loss:.4f}")
+            print("=" * 60)
+        
+        self.X_test = X_test
+        self.y_test = y_test
     
-    def assess(self, temperature: float, heart_rate: float, symptom_count: int) -> Dict:
-        """
-        Assess the severity of a patient's condition.
+    def predict(self, symptoms: List[str]) -> Dict:
+        """Predict diagnosis for a patient."""
+        if not self.is_trained:
+            raise ValueError("Model not trained yet. Call train() first.")
         
-        Args:
-            temperature: Body temperature in Celsius
-            heart_rate: Heart rate in BPM
-            symptom_count: Number of symptoms
+        feature_vector = self._symptoms_to_vector(symptoms).reshape(1, -1)
         
-        Returns:
-            Dictionary with severity score, label, and all membership details
-        """
-        # Step 1: FUZZIFICATION
-        temp_mf = self._membership_temp(temperature)
-        hr_mf = self._membership_hr(heart_rate)
-        symptom_mf = self._membership_symptoms(symptom_count)
+        predictions = self.model.predict(feature_vector, verbose=0)
+        pred_proba = predictions[0]
+        pred_encoded = np.argmax(pred_proba)
         
-        # Step 2: RULE EVALUATION
-        rules = self._evaluate_rules(temp_mf, hr_mf, symptom_mf)
+        diagnosis = self.label_encoder.inverse_transform([pred_encoded])[0]
+        confidence = pred_proba[pred_encoded]
         
-        # Step 3: DEFUZZIFICATION
-        score = self._defuzzify(rules)
-        label = self._get_severity_label(score)
+        top_indices = np.argsort(pred_proba)[-3:][::-1]
+        top_3 = []
+        for idx in top_indices:
+            disease = self.label_encoder.inverse_transform([idx])[0]
+            prob = pred_proba[idx]
+            top_3.append((disease, float(prob)))
         
         return {
-            "severity_score": round(score, 2),
-            "severity_label": label,
-            "fuzzy_sets": {
-                "temperature": temp_mf,
-                "heart_rate": hr_mf,
-                "symptoms": symptom_mf
-            },
-            "rules": rules
+            "module": "NeuralNetwork",
+            "diagnosis": diagnosis,
+            "confidence": float(confidence),
+            "top_3": top_3,
+            "all_probabilities": {
+                disease: float(pred_proba[i]) 
+                for i, disease in enumerate(self.label_encoder.classes_)
+            }
         }
     
+    def predict_from_patient(self, patient: PatientPercept) -> Dict:
+        """Predict diagnosis from a PatientPercept object."""
+        symptoms = patient.symptoms.copy()
+        
+        if patient.temperature >= 38.0:
+            symptoms.append("fever")
+        if patient.temperature >= 39.0:
+            symptoms.append("high_fever")
+        if patient.heart_rate >= 100:
+            symptoms.append("tachycardia")
+        
+        return self.predict(symptoms)
+    
     def analyze(self, patient: PatientPercept) -> Dict:
-        """
-        Standard interface method called by the Agent.
+        """Standard interface method called by the Agent."""
+        if not self.is_trained:
+            logger.warning("Model not trained. Training now...")
+            self.train(epochs=30, verbose=False)
         
-        Returns:
-            Dictionary with severity assessment
-        """
-        result = self.assess(
-            temperature=patient.temperature,
-            heart_rate=patient.heart_rate,
-            symptom_count=len(patient.symptoms)
-        )
-        
-        # Add module info
-        result["module"] = "FuzzyLogic"
-        
-        # Add urgency mapping for compatibility with agent
-        urgency_map = {
-            'LOW': 'LOW',
-            'MILD': 'MEDIUM',
-            'MODERATE': 'MEDIUM',
-            'HIGH': 'HIGH',
-            'CRITICAL': 'CRITICAL'
-        }
-        result["urgency"] = urgency_map.get(result["severity_label"], 'MEDIUM')
-        
-        logger.info(f"Patient {patient.patient_id}: Severity = {result['severity_label']} ({result['severity_score']:.1f}/100)")
-        
-        return result
+        return self.predict_from_patient(patient)
 
 
 # Test the module
 if __name__ == "__main__":
-    print("Testing FuzzySeverityAssessor...")
+    print("Testing NeuralDiagnosticModel...")
     print()
     
-    fa = FuzzySeverityAssessor()
+    nn = NeuralDiagnosticModel()
+    nn.train(epochs=20, verbose=True)
     
-    # Test cases
     test_cases = [
-        (37.0, 72, 2, "Normal patient"),
-        (38.5, 95, 4, "Mild illness"),
-        (39.2, 110, 6, "Moderate case"),
-        (39.8, 115, 7, "Severe case"),
-        (40.2, 130, 9, "Critical case"),
+        (["fever", "cough", "fatigue", "loss_of_smell"], "COVID-19"),
+        (["runny_nose", "sneezing", "sore_throat"], "Common Cold"),
+        (["fever", "rash", "joint_pain", "headache"], "Dengue"),
     ]
     
-    print("SEVERITY ASSESSMENT TEST CASES")
-    print("=" * 60)
+    for symptoms, description in test_cases:
+        result = nn.predict(symptoms)
+        print(f"\n{description}:")
+        print(f"  Symptoms: {symptoms}")
+        print(f"  Diagnosis: {result['diagnosis']}")
+        print(f"  Confidence: {result['confidence']:.2%}")
     
-    for temp, hr, count, desc in test_cases:
-        result = fa.assess(temp, hr, count)
-        print(f"\n{desc}:")
-        print(f"  Temp: {temp}°C, HR: {hr} BPM, Symptoms: {count}")
-        print(f"  Score: {result['severity_score']:.1f}/100")
-        print(f"  Label: {result['severity_label']}")
-    
-    # Test with PatientPercept
-    print("\n" + "=" * 60)
-    print("TESTING WITH PATIENTPERCEPT")
-    print("=" * 60)
-    
-    patient = PatientPercept(
-        patient_id="F001",
-        symptoms=["fever", "cough", "fatigue", "loss_of_smell", "headache", "body_ache"],
-        age=45,
-        temperature=39.2,
-        heart_rate=110
-    )
-    
-    result = fa.analyze(patient)
-    print(f"Patient: {patient.patient_id}")
-    print(f"Severity Score: {result['severity_score']:.1f}/100")
-    print(f"Severity Label: {result['severity_label']}")
-    print(f"Urgency (for Agent): {result['urgency']}")
-    
-    print("\n✅ FuzzySeverityAssessor test passed!")
+    print("\n✅ NeuralDiagnosticModel test passed!")
