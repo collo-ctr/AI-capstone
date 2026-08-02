@@ -1,4 +1,5 @@
 # database.py
+# postgreSQL database can suite as well
 
 import sys
 import os
